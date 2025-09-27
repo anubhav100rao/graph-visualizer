@@ -1,0 +1,5 @@
+{
+  "name": "Point Visualizer",
+  "description": "An application to parse 2D coordinate data and visualize it as either a scatter plot or a graph. It supports various input formats for point data and allows users to choose between directed and undirected graph representations.",
+  "requestFramePermissions": []
+}
