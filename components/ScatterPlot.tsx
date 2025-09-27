@@ -12,12 +12,13 @@ const ScatterPlot: React.FC<ScatterPlotProps> = ({ data }) => {
   const [isLibraryLoaded, setIsLibraryLoaded] = useState(typeof Recharts !== 'undefined');
 
   useEffect(() => {
-    // If the library is already loaded, we don't need to do anything.
-    if (isLibraryLoaded) {
+    // If the library is already loaded when the component mounts, do nothing.
+    if (typeof Recharts !== 'undefined') {
+      setIsLibraryLoaded(true);
       return;
     }
 
-    // Poll every 100ms to check if the Recharts global variable has been attached to the window.
+    // If not loaded, poll every 100ms to check for it.
     const intervalId = setInterval(() => {
       if (typeof Recharts !== 'undefined') {
         setIsLibraryLoaded(true);
@@ -25,17 +26,11 @@ const ScatterPlot: React.FC<ScatterPlotProps> = ({ data }) => {
       }
     }, 100);
 
-    // As a safeguard, stop polling after 10 seconds in case the script fails to load.
-    const timeoutId = setTimeout(() => {
-      clearInterval(intervalId);
-    }, 10000);
-
-    // Cleanup function to clear timers when the component unmounts.
+    // Cleanup function to clear the interval when the component unmounts.
     return () => {
       clearInterval(intervalId);
-      clearTimeout(timeoutId);
     };
-  }, [isLibraryLoaded]);
+  }, []); // Empty dependency array ensures this effect runs only once on mount.
 
   if (!isLibraryLoaded) {
     return (
