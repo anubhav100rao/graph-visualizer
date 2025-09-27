@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Point, VisualizationType, GraphType } from '../types';
 import ScatterPlot from './ScatterPlot';
@@ -30,15 +29,19 @@ const VisualizationPanel: React.FC<VisualizationPanelProps> = ({ points, error, 
       );
     }
 
-    if (visualizationType === 'plot') {
-      return <ScatterPlot data={points} />;
-    }
-
-    if (visualizationType === 'graph') {
-      return <Graph data={points} type={graphType} />;
-    }
-    
-    return null;
+    // Always render both components but toggle visibility.
+    // This prevents re-mounting and re-running library loading checks,
+    // making the switch between views instantaneous.
+    return (
+      <>
+        <div style={{ display: visualizationType === 'plot' ? 'flex' : 'none', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}>
+          <ScatterPlot data={points} />
+        </div>
+        <div style={{ display: visualizationType === 'graph' ? 'flex' : 'none', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' }}>
+          <Graph data={points} type={graphType} />
+        </div>
+      </>
+    );
   };
 
   return (

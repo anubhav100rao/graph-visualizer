@@ -1,71 +1,112 @@
-import React, { useState, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import { Point } from '../types';
 
-// The Recharts library is loaded via a script tag in index.html, making it available globally.
-declare const Recharts: any;
+declare const d3: any;
 
 interface ScatterPlotProps {
   data: Point[];
 }
 
 const ScatterPlot: React.FC<ScatterPlotProps> = ({ data }) => {
-  const [isLibraryLoaded, setIsLibraryLoaded] = useState(typeof Recharts !== 'undefined');
+  const svgRef = useRef<SVGSVGElement | null>(null);
 
   useEffect(() => {
-    // If the library is already loaded when the component mounts, do nothing.
-    if (typeof Recharts !== 'undefined') {
-      setIsLibraryLoaded(true);
-      return;
-    }
+    if (!data || data.length === 0 || !svgRef.current) return;
 
-    // If not loaded, poll every 100ms to check for it.
-    const intervalId = setInterval(() => {
-      if (typeof Recharts !== 'undefined') {
-        setIsLibraryLoaded(true);
-        clearInterval(intervalId);
-      }
-    }, 100);
+    const svg = d3.select(svgRef.current);
+    svg.selectAll('*').remove(); // Clear previous render
 
-    // Cleanup function to clear the interval when the component unmounts.
-    return () => {
-      clearInterval(intervalId);
-    };
-  }, []); // Empty dependency array ensures this effect runs only once on mount.
+    const margin = { top: 30, right: 30, bottom: 50, left: 60 };
+    
+    const parentNode = svg.node().parentNode;
+    if (!parentNode) return;
+    const parentRect = parentNode.getBoundingClientRect();
 
-  if (!isLibraryLoaded) {
-    return (
-      <div className="flex items-center justify-center w-full h-full text-gray-500">
-        <p>Loading chart library...</p>
-      </div>
-    );
-  }
+    const width = parentRect.width - margin.left - margin.right;
+    const height = 500 - margin.top - margin.bottom;
 
-  const { ResponsiveContainer, ScatterChart, CartesianGrid, XAxis, YAxis, Tooltip, Scatter, Legend } = Recharts;
+    const chart = svg
+      .attr('width', parentRect.width)
+      .attr('height', 500)
+      .append('g')
+      .attr('transform', `translate(${margin.left},${margin.top})`);
 
-  return (
-    <div style={{ width: '100%', height: 400 }}>
-      <ResponsiveContainer>
-        <ScatterChart margin={{ top: 20, right: 20, bottom: 20, left: 20 }}>
-          <CartesianGrid strokeDasharray="3 3" />
-          <XAxis
-            type="number"
-            dataKey="x"
-            name="x"
-            label={{ value: 'X-axis', position: 'insideBottom', offset: -10 }}
-          />
-          <YAxis
-            type="number"
-            dataKey="y"
-            name="y"
-            label={{ value: 'Y-axis', angle: -90, position: 'insideLeft' }}
-          />
-          <Tooltip cursor={{ strokeDasharray: '3 3' }} />
-          <Legend />
-          <Scatter name="Points" data={data} fill="#8884d8" />
-        </ScatterChart>
-      </ResponsiveContainer>
-    </div>
-  );
+    // Find data range for scales, adding some padding for visibility
+    const [minX, maxX] = d3.extent(data, (d: Point) => d.x);
+    const [minY, maxY] = d3.extent(data, (d: Point) => d.y);
+
+    const xPadding = (maxX - minX) * 0.1 || 1;
+    const yPadding = (maxY - minY) * 0.1 || 1;
+    
+    // Handle cases where all points have the same x or y value
+    const domainX = (minX === maxX) ? [minX - 1, maxX + 1] : [minX - xPadding, maxX + xPadding];
+    const domainY = (minY === maxY) ? [minY - 1, maxY + 1] : [minY - yPadding, maxY + yPadding];
+
+    // Add X axis
+    const x = d3.scaleLinear().domain(domainX).range([0, width]);
+    const xAxis = chart.append('g')
+      .attr('transform', `translate(0, ${height})`)
+      .call(d3.axisBottom(x));
+
+    // Add Y axis
+    const y = d3.scaleLinear().domain(domainY).range([height, 0]);
+    const yAxis = chart.append('g')
+      .call(d3.axisLeft(y));
+
+    // Style axes to make them more prominent
+    [xAxis, yAxis].forEach(axis => {
+        axis.selectAll('text').style('font-size', '12px').style('fill', '#374151');
+        axis.select('.domain').attr('stroke', '#6b7280');
+        axis.selectAll('line').attr('stroke', '#d1d5db');
+    });
+
+    // X-axis Label
+    svg.append('text')
+        .attr('text-anchor', 'middle')
+        .attr('x', width / 2 + margin.left)
+        .attr('y', height + margin.top + 40)
+        .style('font-size', '14px')
+        .style('fill', '#374151')
+        .text('X-axis');
+
+    // Y-axis Label
+    svg.append('text')
+        .attr('text-anchor', 'middle')
+        .attr('transform', 'rotate(-90)')
+        .attr('y', margin.left - 45)
+        .attr('x', -height / 2 - margin.top)
+        .style('font-size', '14px')
+        .style('fill', '#374151')
+        .text('Y-axis');
+
+    // Add dots with tooltips
+    const dots = chart.append('g');
+    
+    dots.selectAll('circle')
+      .data(data)
+      .join('circle')
+        .attr('cx', (d: Point) => x(d.x))
+        .attr('cy', (d: Point) => y(d.y))
+        .attr('r', 6)
+        .attr('fill', '#4f46e5')
+        .attr('stroke', '#fff')
+        .attr('stroke-width', 1.5)
+      .append('title')
+        .text((d: Point) => `(x: ${d.x}, y: ${d.y})`);
+        
+    // Add coordinate labels
+    dots.selectAll('text')
+      .data(data)
+      .join('text')
+        .attr('x', (d: Point) => x(d.x) + 10)
+        .attr('y', (d: Point) => y(d.y) + 5)
+        .text((d: Point) => `(${d.x}, ${d.y})`)
+        .attr('font-size', '12px')
+        .attr('fill', '#6b7280');
+
+  }, [data]);
+  
+  return <svg ref={svgRef} className="w-full"></svg>;
 };
 
 export default ScatterPlot;

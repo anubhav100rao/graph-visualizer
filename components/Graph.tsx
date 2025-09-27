@@ -15,34 +15,34 @@ const Graph: React.FC<GraphProps> = ({ data, type }) => {
   useEffect(() => {
     if (!data || data.length === 0 || !svgRef.current) return;
 
+    // --- Data Preparation ---
+    // The input 'data' is a list of Points {x, y}, which we interpret as edges {source, target}.
+    const links = data.map(p => ({ source: p.x, target: p.y }));
+    
+    // Deduplicate nodes from the links
+    const nodeIds = new Set<number>();
+    links.forEach(link => {
+      nodeIds.add(link.source);
+      nodeIds.add(link.target);
+    });
+    
+    // Create nodes array for D3 simulation
+    const nodes = Array.from(nodeIds).map(id => ({ id }));
+
+    // --- D3 Setup ---
     const svg = d3.select(svgRef.current);
-    svg.selectAll('*').remove();
+    svg.selectAll('*').remove(); // Clear previous render
 
     const width = svg.node().getBoundingClientRect().width;
-    const height = 450;
-    const margin = { top: 40, right: 40, bottom: 40, left: 40 };
-
-    const xExtent = d3.extent(data, (d: Point) => d.x) as [number, number];
-    const yExtent = d3.extent(data, (d: Point) => d.y) as [number, number];
-    
-    const padding = (Math.max(xExtent[1] - xExtent[0], yExtent[1] - yExtent[0])) * 0.1 || 1;
-
-    const xScale = d3.scaleLinear()
-      .domain([xExtent[0] - padding, xExtent[1] + padding])
-      .range([margin.left, width - margin.right]);
-
-    const yScale = d3.scaleLinear()
-      .domain([yExtent[0] - padding, yExtent[1] + padding])
-      .range([height - margin.bottom, margin.top]);
-
-    const chart = svg.attr('width', width).attr('height', height);
+    const height = 500;
+    svg.attr('width', width).attr('height', height);
 
     // Arrowhead marker for directed graph
     if (type === 'directed') {
-      chart.append('defs').append('marker')
+      svg.append('defs').append('marker')
         .attr('id', 'arrowhead')
         .attr('viewBox', '-0 -5 10 10')
-        .attr('refX', 19) // Position arrowhead at the edge of the circle
+        .attr('refX', 15) // Adjust position to be at the edge of the circle
         .attr('refY', 0)
         .attr('orient', 'auto')
         .attr('markerWidth', 6)
@@ -52,47 +52,84 @@ const Graph: React.FC<GraphProps> = ({ data, type }) => {
         .attr('fill', '#6b7280');
     }
 
-    // Prepare edges (links)
-    const edges = [];
-    for (let i = 0; i < data.length - 1; i++) {
-      edges.push({ source: data[i], target: data[i + 1] });
-    }
+    // --- Simulation ---
+    const simulation = d3.forceSimulation(nodes)
+      .force('link', d3.forceLink(links).id((d: any) => d.id).distance(80))
+      .force('charge', d3.forceManyBody().strength(-300))
+      .force('center', d3.forceCenter(width / 2, height / 2));
 
-    // Draw edges
-    chart.selectAll('.link')
-      .data(edges)
-      .enter()
-      .append('line')
-      .attr('class', 'link')
-      .attr('x1', (d: any) => xScale(d.source.x))
-      .attr('y1', (d: any) => yScale(d.source.y))
-      .attr('x2', (d: any) => xScale(d.target.x))
-      .attr('y2', (d: any) => yScale(d.target.y))
+    // --- Drawing Elements ---
+    const link = svg.append('g')
       .attr('stroke', '#9ca3af')
+      .attr('stroke-opacity', 0.6)
+      .selectAll('line')
+      .data(links)
+      .join('line')
       .attr('stroke-width', 2)
       .attr('marker-end', type === 'directed' ? 'url(#arrowhead)' : null);
 
-    // Draw nodes
-    const nodes = chart.selectAll('.node')
-      .data(data)
-      .enter()
-      .append('g')
-      .attr('class', 'node')
-      .attr('transform', (d: Point) => `translate(${xScale(d.x)},${yScale(d.y)})`);
-      
-    nodes.append('circle')
+    const node = svg.append('g')
+      .attr('stroke', '#fff')
+      .attr('stroke-width', 1.5)
+      .selectAll('circle')
+      .data(nodes)
+      .join('circle')
       .attr('r', 8)
-      .attr('fill', '#4f46e5')
-      .attr('stroke', '#ffffff')
-      .attr('stroke-width', 2);
+      .attr('fill', '#4f46e5');
+
+    const labels = svg.append("g")
+      .attr("class", "labels")
+      .selectAll("text")
+      .data(nodes)
+      .enter().append("text")
+        .attr("x", 12)
+        .attr("y", 4)
+        .attr('font-size', '12px')
+        .attr('fill', '#374151')
+        .text((d: any) => d.id);
+        
+    node.append("title")
+        .text((d: any) => d.id);
+
+    // --- Simulation Ticker ---
+    simulation.on('tick', () => {
+      link
+        .attr('x1', (d: any) => d.source.x)
+        .attr('y1', (d: any) => d.source.y)
+        .attr('x2', (d: any) => d.target.x)
+        .attr('y2', (d: any) => d.target.y);
+
+      node
+        .attr('cx', (d: any) => d.x)
+        .attr('cy', (d: any) => d.y);
       
-    // Draw labels
-    nodes.append('text')
-      .text((d: Point) => `(${d.x}, ${d.y})`)
-      .attr('x', 12)
-      .attr('y', 4)
-      .attr('font-size', '12px')
-      .attr('fill', '#374151');
+      labels
+        .attr("transform", (d: any) => `translate(${d.x},${d.y})`);
+    });
+
+    // --- Drag Interactivity ---
+    function drag(simulation: any) {
+      function dragstarted(event: any) {
+        if (!event.active) simulation.alphaTarget(0.3).restart();
+        event.subject.fx = event.subject.x;
+        event.subject.fy = event.subject.y;
+      }
+      function dragged(event: any) {
+        event.subject.fx = event.x;
+        event.subject.fy = event.y;
+      }
+      function dragended(event: any) {
+        if (!event.active) simulation.alphaTarget(0);
+        event.subject.fx = null;
+        event.subject.fy = null;
+      }
+      return d3.drag()
+          .on("start", dragstarted)
+          .on("drag", dragged)
+          .on("end", dragended);
+    }
+    
+    node.call(drag(simulation));
 
   }, [data, type]);
 
